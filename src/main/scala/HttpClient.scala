@@ -26,6 +26,27 @@ case class NewUserRequest(name: String, password: String)
 case class VerificationRequest(name: String)
 
 /**
+ * Change password request for an existing user.
+ *
+ * We simulate authorisation by checking the user's password against the `oldPassword`.
+ * You task is to check the authorisation and change the password in the data base.
+ *
+ * @param name The name of the user whose password you want to change
+ * @param oldPassword The old password
+ * @param newPassword A new password
+ */
+case class ChangePasswordRequest(name: String, oldPassword: String, newPassword: String)
+
+/**
+ * A remove user request.
+ *
+ * We can only remove the user who exists and has been verified.
+ *
+ * @param name The name of the user to remove
+ */
+case class RemoveUserRequest(name: String)
+
+/**
  * After processing a new user request, you should answer with one of two options:
  * * Success, if the new user is successfully persisted
  * * Failure, with an error message of your choice, if creating/persisting the new user failed
@@ -35,13 +56,32 @@ enum NewUserResult:
   case Failure(msg: String)
 
 /**
- * After processing a verification request, you should anser with one of two options:
+ * After processing a verification request, you should answer with one of two options:
  * * Success, if the `verified` flag of the user was successfully set to true
  * * Failure otherwise
  */
 enum VerificationResult:
   case Success
   case Failure
+
+/**
+ * After processing a change password request, you should anwer with one of two options:
+ * * `Success`, if the password has been successfully changed
+ * * Failure, with an error message of your choice, if authorisation/changing of the password failed.
+ */
+enum ChangePasswordResult:
+  case Success
+  case Failure(msg: String)
+
+/**
+ * After processing a remove user request, you should answer with one of two options:
+ * * `Success`, if the user has been successfully removed
+ * * `Failure`, with an error message of you choice, if the user to be removed does not exist in the database or
+ *   has not been verified
+ */
+enum RemoveUserResult:
+  case Success
+  case Failure(msg: String)
 
 /**
  * A fake implementation of the http client
@@ -51,8 +91,10 @@ enum VerificationResult:
  * When the http client is run, it will call those methods with new user requests and verification requests.
  */
 class HttpClient(
-  private val newUserRequest:      (NewUserRequest, HttpClient)      => NewUserResult,
-  private val verificationRequest: (VerificationRequest, HttpClient) => VerificationResult
+  private val newUserRequest:        (NewUserRequest, HttpClient)        => NewUserResult,
+  private val verificationRequest:   (VerificationRequest, HttpClient)   => VerificationResult,
+  private val changePasswordRequest: (ChangePasswordRequest, HttpClient) => ChangePasswordResult,
+  private val removeUserRequest:     (RemoveUserRequest, HttpClient)     => RemoveUserResult
 ):
   /**
    * Implements a script that simulates a working http client. The script creates new users and checks if they are
@@ -72,6 +114,13 @@ class HttpClient(
       _ <- failedVerification("user3") // no such user
       _ <- checkIfNotReadyForVerification("user3") // no such user
       _ <- failedVerification("user1") // no need for verifying twice
+      _ <- successfulPasswordChange("user1", "password1", "newPassword1")
+      _ <- failedPasswordChange("user3", "password1", "newPassword1") // no such user
+      _ <- failedPasswordChange("user1", "password1", "newPassword1") // wrong old password
+      _ <- failedPasswordChange("user2", "password2", "newPassword2") // unverified user
+      _ <- successfulUserRemoval("user1")
+      _ <- failedUserRemoval("user3") // no such user
+      _ <- failedUserRemoval("user2") // unverified user
     } yield Right(())
 
   /**
@@ -120,3 +169,23 @@ class HttpClient(
     verificationRequest(VerificationRequest(name), this) match
       case VerificationResult.Success => Left(s"The verification of $name should have failed")
       case VerificationResult.Failure => Right(())
+
+  private def successfulPasswordChange(name: String, oldPassword: String, newPassword: String): Either[String, Unit] =
+    changePasswordRequest(ChangePasswordRequest(name, oldPassword, newPassword), this) match
+      case ChangePasswordResult.Success      => Right(())
+      case ChangePasswordResult.Failure(msg) => Left(msg)
+
+  private def failedPasswordChange(name: String, oldPassword: String, newPassword: String): Either[String, Unit] =
+    changePasswordRequest(ChangePasswordRequest(name, oldPassword, newPassword), this) match
+      case ChangePasswordResult.Success    => Left(s"Password change of $name should have failed")
+      case ChangePasswordResult.Failure(_) => Right(())
+
+  private def successfulUserRemoval(name: String): Either[String, Unit] =
+    removeUserRequest(RemoveUserRequest(name), this) match
+      case RemoveUserResult.Success      => Right(())
+      case RemoveUserResult.Failure(msg) => Left(msg)
+
+  private def failedUserRemoval(name: String): Either[String, Unit] =
+    removeUserRequest(RemoveUserRequest(name), this) match
+      case RemoveUserResult.Success => Left(s"Removal of $name should have failed")
+      case RemoveUserResult.Failure(_) => Right(())

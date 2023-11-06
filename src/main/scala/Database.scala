@@ -53,4 +53,37 @@ class Database {
         true
       case _ =>
         false
+
+  /**
+   * Changes the `password` of the given user to `newPassword`.
+   * You can only change the password of a verified user and only if their password are the same as the `oldPassword`.
+   *
+   * @param name The name of the user whose password you want to change
+   * @param oldPassword The old password
+   * @param newPassword A new password
+   * @return `true` if the user exists and is verified, `false` otherwise
+   */
+  def changePassword(name: String, oldPassword: String, newPassword: String): Boolean =
+    get(name) match
+      case Some(user) if user.verified && oldPassword == user.password =>
+        users -= user
+        users += user.copy(password = newPassword)
+        true
+      case _ =>
+        false
+
+  /**
+   * Removes the given user from the database.
+   * Only verified users can be removed.
+   *
+   * @param name The name of the user to remove
+   * @return `true` if the user exists and is verified, `false` otherwise
+   */
+  def removeUser(name: String): Boolean =
+    get(name) match
+      case Some(user) if user.verified =>
+        users -= user
+        true
+      case _ =>
+        false
 }
